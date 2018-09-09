@@ -31,7 +31,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    'p5js.apps.P5JsConfig',
+    'sim.apps.SimConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',

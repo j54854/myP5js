@@ -4,22 +4,69 @@ function setup() {
   var my_canvas = createCanvas(my_width, my_width *0.6);
   my_canvas.parent("mysketch");
 
+  order_quantity = createInput("How many?");
+  var order_btn = createButton("Order");
+  var stop_btn = createButton("Stop");
+  var resume_btn = createButton("Resume");
+  var reset_btn = createButton("Play Again");
+
+  order_quantity.parent("buttons");
+  order_btn.parent("buttons");
+  stop_btn.parent("buttons");
+  resume_btn.parent("buttons");
+  reset_btn.parent("buttons");
+
+  order_btn.mousePressed(place_order);
+  stop_btn.mousePressed(stop_sim);
+  resume_btn.mousePressed(resume_sim);
+  reset_btn.mousePressed(reset_sim);
+
   frameRate(6);
   my_model = new Model();
 }
 
 function draw() {
   background(200);
-//  my_model.update();
-//  console.log(my_model.state);
   while(frameCount >= my_model.calendar.events[0].time) {
     my_model.update();
   }
-  my_model.show_history();
-  my_model.show_stock();
+  if(frameCount < 900) {
+    my_model.show_history();
+    my_model.show_stock();
+  } else {
+    my_model.show_results();
+  }
 }
 
 var my_model;
+var oq_input;
+
+function stop_sim() {
+  noLoop();
+}
+
+function resume_sim() {
+  loop();
+}
+
+function reset_sim() {
+  if(frameCount >= 900) {
+    my_model = new Model();
+    frameCount = 0;
+    loop();
+  }
+}
+
+function place_order() {
+  var oq = parseInt(order_quantity.value());
+  if(Number.isNaN(oq)) oq = 0;
+  my_model.calendar.extend({
+    time: frameCount +my_model.par.LT,
+    type: "refill"
+  });
+  my_model.state.ordered.push(oq);
+  my_model.state.oc += my_model.par.OC;
+}
 
 // exponential distribution
 function exp_rand(lambda) {
@@ -55,14 +102,17 @@ function Model() {
   this.par = {
     MTB: 2,  //mean time between shipments
     LT: 10,  // lead time to replenishment
-    OQ: 20,  // order quantity
-    RP: 5  // replenishment point
+    HC: 1,  // stock holding cost
+    OC: 400,  // ordering cost
+    SOP: 200,  // stock out penalty
   };
   this.state = {
     time: 0,  // what time is it now?
     vol: 20,  // stock volume at hand
     ordered: [],  // quantities ordered
-    outs: 0  // number of stockouts
+    outs: 0,  // number of stockouts
+    hc: 0,  // total stock holding cost
+    oc: 0,  // total ordering cost
   };
   this.calendar = new Calendar([
     {time:exp_rand(1 /this.par.MTB), type:"ship_out"},
@@ -74,17 +124,6 @@ function Model() {
 Model.prototype.reduce = function() {
   if(this.state.vol > 0) {
     this.state.vol --;
-    var total_ordered = 0;
-    for(o of this.state.ordered) {
-      total_ordered += o;
-    }
-    if(this.state.vol +total_ordered <= this.par.RP) {
-      this.calendar.extend({  // a new order is issued
-        time: this.state.time +this.par.LT,
-        type: "refill"
-      });
-      this.state.ordered.push(this.par.OQ);
-    }
   } else {
     this.state.outs ++;
   }
@@ -92,6 +131,7 @@ Model.prototype.reduce = function() {
     time: this.state.time +exp_rand(1 /this.par.MTB),
     type: "ship_out"
   });
+  this.par.MTB = max(0.1, this.par.MTB +random(-0.1, 0.1))
 }
 
 Model.prototype.raise = function() {
@@ -102,6 +142,7 @@ Model.prototype.raise = function() {
 Model.prototype.update = function() {
   var e = this.calendar.fire();
   this.state = Object.assign({}, this.state);
+  this.state.hc += (e.time -this.state.time) *this.state.vol *this.par.HC;
   this.state.time = e.time;
   if(e.type == "over") {
     noLoop();
@@ -111,6 +152,19 @@ Model.prototype.update = function() {
     this.raise();
   }
   this.stateLog.push(this.state);
+}
+
+Model.prototype.show_results = function() {
+  push();
+  translate(50, 100);
+  var total_cost = this.state.hc +this.state.oc +this.state.outs *this.par.SOP;
+  textSize(40);
+  text("TOTAL COST: " +floor(total_cost), 0, 0);
+  textSize(20);
+  text("Holding Cost: " +floor(this.state.hc), 100, 100);
+  text("Ordering Cost: " +floor(this.state.oc), 100, 140);
+  text("Stockout Penalty: " +floor(this.state.outs *this.par.SOP), 100, 180);
+  pop();
 }
 
 Model.prototype.show_history = function() {

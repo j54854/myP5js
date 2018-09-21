@@ -1,6 +1,7 @@
 function setup() {
   var my_element = select("#mysketch");
-  var my_canvas = createCanvas(my_element.width, 400);
+  var my_width = min(my_element.width, 1000);
+  var my_canvas = createCanvas(my_width, my_width *0.6);
   my_canvas.parent("mysketch");
 
   background(200);

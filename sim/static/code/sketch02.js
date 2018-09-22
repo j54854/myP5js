@@ -10,13 +10,13 @@ function setup() {
 
 function draw() {
   background(200);
-//  my_model.update();
-//  console.log(my_model.state);
+  my_model.show_history();
+  my_model.show_stock();
   while(frameCount >= my_model.calendar.events[0].time) {
     my_model.update();
   }
-  my_model.show_history();
-  my_model.show_stock();
+  //  my_model.update();
+  //  console.log(my_model.state);
 }
 
 var my_model;
@@ -56,7 +56,7 @@ function Model() {
     MTB: 2,  //mean time between shipments
     LT: 10,  // lead time to replenishment
     OQ: 20,  // order quantity
-    RP: 5  // replenishment point
+    OP: 5  // ordering point
   };
   this.state = {
     time: 0,  // what time is it now?
@@ -78,7 +78,7 @@ Model.prototype.reduce = function() {
     for(o of this.state.ordered) {
       total_ordered += o;
     }
-    if(this.state.vol +total_ordered <= this.par.RP) {
+    if(this.state.vol +total_ordered <= this.par.OP) {
       this.calendar.extend({  // a new order is issued
         time: this.state.time +this.par.LT,
         type: "refill"
@@ -116,8 +116,8 @@ Model.prototype.update = function() {
 Model.prototype.show_history = function() {
   var my_ratio = width /1000;
   push();
-  translate(50 *my_ratio, 550 *my_ratio);
   scale(my_ratio);
+  translate(50, 550);
   textSize(20);
   text("0", -5, 20);
   text("200", 180, 20);
@@ -144,8 +144,8 @@ Model.prototype.show_history = function() {
 Model.prototype.show_stock = function() {
   var my_ratio = width /1000;
   push();
-  translate(50 *my_ratio, 200 *my_ratio);
   scale(my_ratio);
+  translate(50, 200);
   textSize(20);
   text("stock at hand", 100, 70);
   for (var i = 0; i < this.state.vol; i ++) {

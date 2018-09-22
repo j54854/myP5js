@@ -4,22 +4,19 @@ function setup() {
   var my_canvas = createCanvas(my_width, my_width *0.6);
   my_canvas.parent("mysketch");
 
-  order_quantity = createInput("How many?");
+  order_input = createInput("How many?");
   var order_btn = createButton("Order");
-  var stop_btn = createButton("Stop");
+  var stop_btn = createButton("Pause");
   var resume_btn = createButton("Resume");
-  var reset_btn = createButton("Play Again");
 
-  order_quantity.parent("buttons");
+  order_input.parent("buttons");
   order_btn.parent("buttons");
   stop_btn.parent("buttons");
   resume_btn.parent("buttons");
-  reset_btn.parent("buttons");
 
   order_btn.mousePressed(place_order);
-  stop_btn.mousePressed(stop_sim);
-  resume_btn.mousePressed(resume_sim);
-  reset_btn.mousePressed(reset_sim);
+  stop_btn.mousePressed(noLoop);
+  resume_btn.mousePressed(loop);
 
   frameRate(6);
   my_model = new Model();
@@ -27,46 +24,15 @@ function setup() {
 
 function draw() {
   background(200);
+  my_model.show_history();
+  my_model.show_stock();
   while(frameCount >= my_model.calendar.events[0].time) {
     my_model.update();
-  }
-  if(frameCount < 900) {
-    my_model.show_history();
-    my_model.show_stock();
-  } else {
-    my_model.show_results();
   }
 }
 
 var my_model;
-var oq_input;
-
-function stop_sim() {
-  noLoop();
-}
-
-function resume_sim() {
-  loop();
-}
-
-function reset_sim() {
-  if(frameCount >= 900) {
-    my_model = new Model();
-    frameCount = 0;
-    loop();
-  }
-}
-
-function place_order() {
-  var oq = parseInt(order_quantity.value());
-  if(Number.isNaN(oq)) oq = 0;
-  my_model.calendar.extend({
-    time: frameCount +my_model.par.LT,
-    type: "refill"
-  });
-  my_model.state.ordered.push(oq);
-  my_model.state.oc += my_model.par.OC;
-}
+var order_input;
 
 // exponential distribution
 function exp_rand(lambda) {
@@ -103,8 +69,9 @@ function Model() {
     MTB: 2,  //mean time between shipments
     LT: 10,  // lead time to replenishment
     HC: 1,  // stock holding cost
-    OC: 400,  // ordering cost
-    SOP: 200,  // stock out penalty
+    OC: 500,  // ordering cost
+    SOP: 250,  // stock out penalty
+    RV: 100,  // sales revenue
   };
   this.state = {
     time: 0,  // what time is it now?
@@ -113,6 +80,7 @@ function Model() {
     outs: 0,  // number of stockouts
     hc: 0,  // total stock holding cost
     oc: 0,  // total ordering cost
+    rv: 0,  // total revenue
   };
   this.calendar = new Calendar([
     {time:exp_rand(1 /this.par.MTB), type:"ship_out"},
@@ -124,6 +92,7 @@ function Model() {
 Model.prototype.reduce = function() {
   if(this.state.vol > 0) {
     this.state.vol --;
+    this.state.rv += this.par.RV;
   } else {
     this.state.outs ++;
   }
@@ -145,6 +114,7 @@ Model.prototype.update = function() {
   this.state.hc += (e.time -this.state.time) *this.state.vol *this.par.HC;
   this.state.time = e.time;
   if(e.type == "over") {
+    my_model.show_results();
     noLoop();
   } else if(e.type == "ship_out") {
     this.reduce();
@@ -155,23 +125,27 @@ Model.prototype.update = function() {
 }
 
 Model.prototype.show_results = function() {
+  background(200);
+  var my_ratio = width /1000;
   push();
+  scale(my_ratio);
   translate(50, 100);
-  var total_cost = this.state.hc +this.state.oc +this.state.outs *this.par.SOP;
+  var my_score = this.state.rv -this.state.hc -this.state.oc -this.state.outs *this.par.SOP;
   textSize(40);
-  text("TOTAL COST: " +floor(total_cost), 0, 0);
+  text("Your Score: " +floor(my_score), 0, 0);
   textSize(20);
-  text("Holding Cost: " +floor(this.state.hc), 100, 100);
-  text("Ordering Cost: " +floor(this.state.oc), 100, 140);
-  text("Stockout Penalty: " +floor(this.state.outs *this.par.SOP), 100, 180);
+  text("Sales Revenue: " +floor(this.state.rv), 100, 100);
+  text("Holding Cost: " +floor(this.state.hc), 100, 140);
+  text("Ordering Cost: " +floor(this.state.oc), 100, 180);
+  text("Stockout Penalty: " +floor(this.state.outs *this.par.SOP), 100, 220);
   pop();
 }
 
 Model.prototype.show_history = function() {
   var my_ratio = width /1000;
   push();
-  translate(50 *my_ratio, 550 *my_ratio);
   scale(my_ratio);
+  translate(50, 550);
   textSize(20);
   text("0", -5, 20);
   text("200", 180, 20);
@@ -198,8 +172,8 @@ Model.prototype.show_history = function() {
 Model.prototype.show_stock = function() {
   var my_ratio = width /1000;
   push();
-  translate(50 *my_ratio, 200 *my_ratio);
   scale(my_ratio);
+  translate(50, 200);
   textSize(20);
   text("stock at hand", 100, 70);
   for (var i = 0; i < this.state.vol; i ++) {
@@ -212,4 +186,15 @@ Model.prototype.show_stock = function() {
     rect((i %10) *40, -floor(i /10) *40, 40, 40);
   }
   pop();
+}
+
+function place_order() {
+  var oq = parseInt(order_input.value());
+  if(Number.isNaN(oq)) oq = 0;
+  my_model.calendar.extend({
+    time: frameCount +my_model.par.LT,
+    type: "refill"
+  });
+  my_model.state.ordered.push(oq);
+  my_model.state.oc += my_model.par.OC;
 }

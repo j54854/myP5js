@@ -111,13 +111,41 @@ Model.prototype.raise = function() {
   this.state.ordered.shift();
 }
 
+Model.prototype.calc_score = function() {
+  return floor(
+    this.state.rv -this.state.hc -this.state.oc -this.state.outs *this.par.SOP
+  );
+}
+
+Model.prototype.save_log = function() {
+  var csrftoken = Cookies.get('csrftoken');
+  var headers = {'X-CSRFToken': csrftoken};
+  var data = {
+    "score": this.calc_score(),
+    "logs": {}
+  };
+  for(var i = 0; i < this.stateLog.length; i++) {
+    var log = Object.assign({}, this.stateLog[i]);
+    log.ordered = log.ordered.length;
+    data.logs[String(i)] = log;
+  }
+  console.log(data);
+  axios.post("/sim/post/", data, {headers: headers})
+    .then(function (response) {
+      console.log(response);
+    })
+    .catch(function (error) {
+      console.log(error);
+    });
+}
+
 Model.prototype.update = function() {
   var e = this.calendar.fire();
   this.state = Object.assign({}, this.state);
   this.state.hc += (e.time -this.state.time) *this.state.vol *this.par.HC;
   this.state.time = e.time;
   if(e.type == "over") {
-    my_model.show_results();
+    loadJSON("/sim/get/", my_model.close_game.bind(this));
     noLoop();
   } else if(e.type == "ship_out") {
     this.reduce();
@@ -127,20 +155,43 @@ Model.prototype.update = function() {
   this.stateLog.push(this.state);
 }
 
-Model.prototype.show_results = function() {
+Model.prototype.close_game = function(games) {
+  var scores = [];
+  for(var game of games) {
+    scores.push(parseInt(game.score));
+  }
+  var my_score = this.calc_score();
+  var best_score = my_score;
+  var my_rank = 1;
+  if(scores.length > 0) {
+    best_score = max(best_score, scores[0]);
+    for(var score of scores) {
+      if(score > my_score) {
+        my_rank ++;
+      } else {
+        break;
+      }
+    }
+  }
+  this.show_results(my_score, best_score, my_rank, scores.length +1);
+  this.save_log();
+}
+
+Model.prototype.show_results = function(my_score, best_score, my_rank, total) {
   background(200);
   var my_ratio = width /1000;
   push();
   scale(my_ratio);
   translate(50, 100);
-  var my_score = this.state.rv -this.state.hc -this.state.oc -this.state.outs *this.par.SOP;
   textSize(40);
-  text("Your Score: " +floor(my_score), 0, 0);
+  text("Your Score: " +my_score +"  ( Best Score: " +best_score +" )", 0, 0);
   textSize(20);
   text("Sales Revenue: " +floor(this.state.rv), 100, 100);
   text("Holding Cost: " +floor(this.state.hc), 100, 140);
   text("Ordering Cost: " +floor(this.state.oc), 100, 180);
   text("Stockout Penalty: " +floor(this.state.outs *this.par.SOP), 100, 220);
+  textSize(40);
+  text("Your Rank is " +my_rank +"  ( In " +total +" Players )", 0, 320);
   pop();
 }
 
@@ -191,14 +242,6 @@ Model.prototype.show_stock = function() {
   pop();
 }
 
-function reset_sim() {
-  if(frameCount >= 900) {
-    my_model = new Model();
-    frameCount = 0;
-    loop();
-  }
-}
-
 function place_order() {
   var oq = parseInt(order_input.value());
   if(Number.isNaN(oq)) oq = 0;
@@ -208,4 +251,12 @@ function place_order() {
   });
   my_model.state.ordered.push(oq);
   my_model.state.oc += my_model.par.OC;
+}
+
+function reset_sim() {
+  if(frameCount >= 900) {
+    my_model = new Model();
+    frameCount = 0;
+    loop();
+  }
 }

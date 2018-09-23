@@ -111,6 +111,7 @@ Model.prototype.raise = function() {
 Model.prototype.update = function() {
   var e = this.calendar.fire();
   this.state = Object.assign({}, this.state);
+  this.state.ordered = this.state.ordered.concat();
   this.state.hc += (e.time -this.state.time) *this.state.vol *this.par.HC;
   this.state.time = e.time;
   if(e.type == "over") {

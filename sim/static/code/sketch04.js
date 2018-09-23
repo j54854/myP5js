@@ -126,7 +126,7 @@ Model.prototype.save_log = function() {
   };
   for(var i = 0; i < this.stateLog.length; i++) {
     var log = Object.assign({}, this.stateLog[i]);
-    log.ordered = log.ordered.length;
+    log.ordered = log.ordered.length ? log.ordered[0] : 0;
     data.logs[String(i)] = log;
   }
   console.log(data);
@@ -142,6 +142,7 @@ Model.prototype.save_log = function() {
 Model.prototype.update = function() {
   var e = this.calendar.fire();
   this.state = Object.assign({}, this.state);
+  this.state.ordered = this.state.ordered.concat();
   this.state.hc += (e.time -this.state.time) *this.state.vol *this.par.HC;
   this.state.time = e.time;
   if(e.type == "over") {

@@ -1,0 +1,26 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!--    <title>p5.js example</title>
+    <style> body {padding: 0; margin: 0;} </style>  -->
+
+    <title>Simulation</title>
+
+    <script src="{% static 'p5/p5.min.js' %}"></script>
+    <script src="{% static 'p5/addons/p5.dom.min.js' %}"></script>
+<!--    <script src="{% static 'p5/addons/p5.sound.min.js' %}"></script>  -->
+    <script src="{% static 'code/test/sample01.js' %}"></script>
+  </head>
+
+  <body>
+    <h1>Interactive Simulation</h1>
+    <div id="mysketch"></div>
+    <div id="buttons"></div>
+    <h1>Please Enjoy!</h1>
+  </body>
+</html>

@@ -1,42 +1,54 @@
 function setup() {
   var my_element = select("#mysketch");
-  var my_width = min(my_element.width, 1000);
-  var my_canvas = createCanvas(my_width, my_width *0.6);
-  my_canvas.parent("mysketch");
+  var my_width = min(my_element.width, 800);
 
-  order_input = createInput("How many?");
-  var order_btn = createButton("Order");
+  var my_canvas = createCanvas(my_width, my_width);
   var stop_btn = createButton("Pause");
   var resume_btn = createButton("Resume");
+  var start_btn = createButton("Restart");
 
-  order_input.parent("buttons");
-  order_btn.parent("buttons");
-  stop_btn.parent("buttons");
+  my_canvas.parent("mysketch");
+  stop_btn.parent("buttons");  //
   resume_btn.parent("buttons");
+  start_btn.parent("buttons");
 
-  order_btn.mousePressed(place_order);
   stop_btn.mousePressed(noLoop);
   resume_btn.mousePressed(loop);
+  start_btn.mousePressed(start_again);
 
-  frameRate(6);
+  frameRate(12);
   my_model = new Model();
 }
 
 function draw() {
-  background(200);
-  my_model.show_history();
-  my_model.show_stock();
+  background(230, 240, 250);
+  my_model.show();
   while(frameCount >= my_model.calendar.events[0].time) {
     my_model.update();
+    console.log(my_model.customers);
+  }
+}
+
+function start_again() {
+  if(frameCount >= 350) {
+    my_model = new Model();
+    frameCount = 0;
+    loop();
   }
 }
 
 var my_model;
-var order_input;
 
 // exponential distribution
 function exp_rand(lambda) {
-  var x = -log(1 - random()) /lambda;
+  return -log(1 -random()) /lambda;
+}
+
+// truncated normal distribution
+function tnorm_rand(mean, sd) {
+  do {
+    var x = randomGaussian(mean, sd);
+  } while(x <= 0);
   return x;
 }
 
@@ -63,139 +75,254 @@ Calendar.prototype.fire = function() {
   return e;
 }
 
+// customer model
+function Customer(id, now) {
+  this.id = id;
+  this.size = this.set_size();  // how many people you are
+  this.place = undefined;  // where you are now?
+  this.table = [];  // table(s) assigned
+  this.arrived = now;  // when arrived
+  this.seated = undefined;  // when seated
+  this.left = undefined;  // when left
+}
+
+Customer.prototype.set_size = function() {
+  var dice = random();
+  if(dice < 0.1) {  // tentative distribution (to be modified)
+    return 1;
+  } else if(dice < 0.7) {
+    return floor(random(2, 4));
+  } else {
+    return floor(random(4, 8));
+  }
+}
+
+function Customers() {
+  this.num = 0;
+  this.waiting_people = 0;
+  this.balked = [];  // customers who left without waiting
+  this.queued = [];  // customers who are waiting in the queue
+  this.served = [];  // customers who are being served at tables
+  this.left = [];  // customers who left after finishing meal
+}
+
+Customers.prototype.arrive = function(now) {
+  var c = new Customer(this.num, now);
+  this.num ++;
+  if(this.waiting_people > 10) {  // (too) simple balking rule
+    c.left = now;
+    c.place = "balked";
+    this.balked.push(c);
+  } else {
+    c.place = "queued";
+    this.queued.push(c);
+    this.waiting_people += c.size;
+  }
+}
+
+Customers.prototype.take_seat = function(c, now) {  // seated to a table
+  c.seated = now;
+  c.place = "served";
+  this.served.push(c);
+  for(var i = 0; i < this.queued.length; i ++) {
+    if(this.queued[i] == c) {
+      this.queued.splice(i, 1);
+      this.waiting_people -= c.size;
+      break;
+    }
+  }
+  for(var t of c.table) {
+      t.free = false;
+      t.who = c;
+  }
+}
+
+Customers.prototype.leave = function(c, now) {  // finish meal & leave restaurant
+  c.left = now;
+  c.place = "left";
+  this.left.push(c);
+  for(var i = 0; i < this.served.length; i ++) {
+    if(this.served[i] == c) {
+      this.served.splice(i, 1);
+      break;
+    }
+  }
+  for(var t of c.table) {
+      t.free = true;
+      t.who = undefined;
+  }
+}
+
+// table model
+function Table(id) {
+  this.id = id;
+  this.free = true;  // if not, this table is occupied
+  this.who = undefined;  // customers at the table
+}
+
+function Tables(N) {  // N: total number of tables
+  this.tables = [];
+  for(var i = 0; i < N; i ++) {  // serially located tables
+    this.tables.push(new Table(i));
+  }
+}
+
+Tables.prototype.get_candidates = function(num) {  // num: # of necessary tables
+  var candidates = [];  // set of possible combinations of num tables
+  var chain = 0;
+  for(var i = 0; i < this.tables.length; i ++) {
+    if(this.tables[i].free) {
+      chain ++;
+    } else {
+      chain = 0;
+    }
+    if(chain == num) {
+      var candidate = [];
+      for(var j = i -num +1; j <= i; j ++) {
+        candidate.push(this.tables[j]);
+      }
+      candidates.push(candidate);
+      chain --;
+    }
+  }
+  return candidates;
+}
+
 // simulation model
 function Model() {
   this.par = {
-    MTB: 2,  //mean time between shipments
-    LT: 10,  // lead time to replenishment
-    HC: 1,  // stock holding cost
-    OC: 500,  // ordering cost
-    SOP: 250,  // stock out penalty
-    RV: 100,  // sales revenue
+    NT: 7,  // number of tables
+    MTB: 10,  // mean time between arrivals
+    MET: 30,  // mean eating time
+    SD: 8,  // standard deviation
   };
-  this.state = {
-    time: 0,  // what time is it now?
-    vol: 20,  // stock volume at hand
-    ordered: [],  // quantities ordered
-    outs: 0,  // number of stockouts
-    hc: 0,  // total stock holding cost
-    oc: 0,  // total ordering cost
-    rv: 0,  // total revenue
-  };
+  this.customers = new Customers();
+  this.tables = new Tables(this.par.NT);
   this.calendar = new Calendar([
-    {time:exp_rand(1 /this.par.MTB), type:"ship_out"},
-    {time:900, type:"over"}
+    {time:0, type:"arrival"},  // arrival of the 1st customer
+    {time:350, type:"over"}  // the end of simulation
   ]);
-  this.stateLog = [this.state];
-}
-
-Model.prototype.reduce = function() {
-  if(this.state.vol > 0) {
-    this.state.vol --;
-    this.state.rv += this.par.RV;
-  } else {
-    this.state.outs ++;
-  }
-  this.calendar.extend({
-    time: this.state.time +exp_rand(1 /this.par.MTB),
-    type: "ship_out"
-  });
-  this.par.MTB = max(0.1, this.par.MTB +random(-0.1, 0.1))
-}
-
-Model.prototype.raise = function() {
-  this.state.vol += this.state.ordered[0];
-  this.state.ordered.shift();
 }
 
 Model.prototype.update = function() {
-  var e = this.calendar.fire();
-  this.state = Object.assign({}, this.state);
-  this.state.ordered = this.state.ordered.concat();
-  this.state.hc += (e.time -this.state.time) *this.state.vol *this.par.HC;
-  this.state.time = e.time;
+  var e = this.calendar.fire();  // e: the next event
   if(e.type == "over") {
-    my_model.show_results();
-    noLoop();
-  } else if(e.type == "ship_out") {
-    this.reduce();
-  } else if(e.type == "refill") {
-    this.raise();
+    noLoop();  //  simulation is over
+  } else if(e.type == "arrival") {
+    this.customers.arrive(e.time);
+    this.calendar.extend({
+      time: e.time +exp_rand(1 /this.par.MTB),
+      type: "arrival"  // arraival of next customer
+    });
+    this.seat_customers(e.time);
+  } else if(e.type == "departure") {
+    this.customers.leave(e.who, e.time);
+    this.seat_customers(e.time);
   }
-  this.stateLog.push(this.state);
 }
 
-Model.prototype.show_results = function() {
-  background(200);
-  var my_ratio = width /1000;
+Model.prototype.seat_customers = function(now) {
+  while(this.customers.queued.length > 0) {  // are there waiting customer(s)?
+    var c = this.customers.queued[0];  // 1st customer in the queue
+    var table_num = ceil(c.size /2);  // how many tables needed?
+    var candidates = this.tables.get_candidates(table_num);
+    if(candidates.length == 0) {
+      return;
+    }
+    c.table = random(candidates);  // (too) simple seating rule
+    this.customers.take_seat(c, now);
+    this.calendar.extend({
+      time: now +tnorm_rand(this.par.MET, this.par.SD),
+      type: "departure",
+      who: c  // customer c finishes meal
+    });
+  }
+  return;
+}
+
+// codes for model visualization
+
+Model.prototype.show = function() {
+  var my_ratio = width /800;
   push();
   scale(my_ratio);
+  textAlign(CENTER, CENTER);
+  textSize(18);
+  line(0, 400, 800, 400);
+  text("waiting queue", 100, 50);
   translate(50, 100);
-  var my_score = this.state.rv -this.state.hc -this.state.oc -this.state.outs *this.par.SOP;
-  textSize(40);
-  text("Your Score: " +floor(my_score), 0, 0);
-  textSize(20);
-  text("Sales Revenue: " +floor(this.state.rv), 100, 100);
-  text("Holding Cost: " +floor(this.state.hc), 100, 140);
-  text("Ordering Cost: " +floor(this.state.oc), 100, 180);
-  text("Stockout Penalty: " +floor(this.state.outs *this.par.SOP), 100, 220);
+  this.customers.show_queue();
+  translate(0, 125);
+  this.tables.show();
+  translate(0, 525);
+  this.show_chart();
   pop();
 }
 
-Model.prototype.show_history = function() {
-  var my_ratio = width /1000;
-  push();
-  scale(my_ratio);
-  translate(50, 550);
-  textSize(20);
-  text("0", -5, 20);
-  text("200", 180, 20);
-  text("400", 380, 20);
-  text("600", 580, 20);
-  text("800", 780, 20);
-  text("time", 890, 20);
-  stroke(0, 0, 255);
-  for(var i = 0; i < this.stateLog.length -1; i ++) {
-    var from = this.stateLog[i];
-    var to = this.stateLog[i +1];
-    line(from.time, -5 *from.vol, to.time, -5 *from.vol);
-    line(to.time, -5 *from.vol, to.time, -5 *to.vol);
+Customers.prototype.show_queue = function() {
+  var x = 0;
+  var y = 0;
+  for (var c of this.queued) {
+    for(var i = 0; i < c.size; i++) {
+      ellipse(x, y, 40, 40);
+      text(c.id, x, y)
+      x += 40;
+      if(x > 700) {
+        x = 0;
+        y = 40;
+      }
+    }
+  }
+}
+
+Tables.prototype.show = function() {
+  var c = undefined;
+  for(var i = 0; i < this.tables.length; i ++) {
+    push();
+    if(this.tables[i].free) {
+      fill(0);
+    } else {
+      fill(255);
+    }
+    rect(i *100 +10, 0, 80, 80);
+    pop();
+    text("table"+i, i *100 +50, 120);
+    if(!this.tables[i].free) {
+      text(this.tables[i].who.id, i *100 +50, 50);
+    }
+  }
+}
+
+Model.prototype.show_chart = function() {
+  for(var i = 0; i < 4; i ++) {  // time
+    text(i *100, i *200, 20);
+  }
+  text("time", 700, 20);
+  for(var i = 0; i < 7; i ++) {  // table id
+    text(i, -10, i *40 -280);
+  }
+  for(var c of this.customers.left.concat(this.customers.served)) {
+    c.show_in_chart();
   }
   stroke(255, 0, 0);
-  line(frameCount, 0, frameCount, -150);
+  line(frameCount *2, 0, frameCount *2, -320);
   stroke(0);
-  strokeWeight(2);
-  line(0, 0, 900, 0);
-  line(0, 0, 0, -200);
-  pop();
+  line(0, 0, 700, 0);
+  line(0, 0, 0, -320);
 }
 
-Model.prototype.show_stock = function() {
-  var my_ratio = width /1000;
+Customer.prototype.show_in_chart = function() {
+  var x = this.seated *2;
+  var h = (this.table[this.table.length -1].id -this.table[0].id +1) *40 -4;
+  var y = this.table[0].id *40 -298;
+  if(this.place == "left") {
+    var w = (this.left -this.seated) *2;
+  } else {
+    var w = (frameCount -this.seated) *2;
+  }
   push();
-  scale(my_ratio);
-  translate(50, 200);
-  textSize(20);
-  text("stock at hand", 100, 70);
-  for (var i = 0; i < this.state.vol; i ++) {
-    rect((i %10) *40, -floor(i /10) *40, 40, 40);
-  }
-  translate(500, 0);
-  text("stockouts", 100, 70);
-  fill(255, 0, 0);
-  for (var i = 0; i < this.state.outs; i ++) {
-    rect((i %10) *40, -floor(i /10) *40, 40, 40);
-  }
+  stroke(0, 0, 255);
+  rect(x, y, w, h);
   pop();
-}
-
-function place_order() {
-  var oq = parseInt(order_input.value());
-  if(Number.isNaN(oq)) oq = 0;
-  my_model.calendar.extend({
-    time: frameCount +my_model.par.LT,
-    type: "refill"
-  });
-  my_model.state.ordered.push(oq);
-  my_model.state.oc += my_model.par.OC;
+  text(this.id, x +w /2, y +h/2);
 }

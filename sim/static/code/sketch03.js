@@ -100,7 +100,7 @@ Model.prototype.reduce = function() {
     time: this.state.time +exp_rand(1 /this.par.MTB),
     type: "ship_out"
   });
-  this.par.MTB = max(0.1, this.par.MTB +random(-0.1, 0.1))
+  this.par.MTB = max(0.1, this.par.MTB +random(-0.1, 0.1));
 }
 
 Model.prototype.raise = function() {
@@ -110,8 +110,8 @@ Model.prototype.raise = function() {
 
 Model.prototype.update = function() {
   var e = this.calendar.fire();
-  this.state = Object.assign({}, this.state);
-  this.state.ordered = this.state.ordered.concat();
+  this.state = Object.assign({}, this.state);  // deep copy
+  this.state.ordered = this.state.ordered.concat();  // deep copy
   this.state.hc += (e.time -this.state.time) *this.state.vol *this.par.HC;
   this.state.time = e.time;
   if(e.type == "over") {

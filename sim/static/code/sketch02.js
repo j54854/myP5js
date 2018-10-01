@@ -101,8 +101,8 @@ Model.prototype.raise = function() {
 
 Model.prototype.update = function() {
   var e = this.calendar.fire();
-  this.state = Object.assign({}, this.state);
-  this.state.ordered = this.state.ordered.concat();
+  this.state = Object.assign({}, this.state);  // deep copy
+  this.state.ordered = this.state.ordered.concat();  // deep copy
   this.state.time = e.time;
   if(e.type == "over") {
     noLoop();

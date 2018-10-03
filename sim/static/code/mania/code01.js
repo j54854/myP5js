@@ -1,3 +1,5 @@
+// simple dining floor management simuation
+
 function setup() {
   var my_element = select("#mysketch");
   var my_width = min(my_element.width, 800);
@@ -8,7 +10,7 @@ function setup() {
   var start_btn = createButton("Restart");
 
   my_canvas.parent("mysketch");
-  stop_btn.parent("buttons");  //
+  stop_btn.parent("buttons");
   resume_btn.parent("buttons");
   start_btn.parent("buttons");
 
@@ -16,7 +18,7 @@ function setup() {
   resume_btn.mousePressed(loop);
   start_btn.mousePressed(start_again);
 
-  frameRate(12);
+  frameRate(6);
   my_model = new Model();
 }
 
@@ -78,8 +80,8 @@ Calendar.prototype.fire = function() {
 // customer model
 function Customer(id, now) {
   this.id = id;
-  this.size = this.set_size();  // how many people you are
-  this.place = undefined;  // where you are now?
+  this.size = this.set_size();  // how many people are you?
+  this.place = undefined;  // where are you now?
   this.table = [];  // table(s) assigned
   this.arrived = now;  // when arrived
   this.seated = undefined;  // when seated
@@ -106,7 +108,7 @@ function Customers() {
   this.left = [];  // customers who left after finishing meal
 }
 
-Customers.prototype.arrive = function(now) {
+Customers.prototype.arrive = function(now) {  // arrive at restaurant
   var c = new Customer(this.num, now);
   this.num ++;
   if(this.waiting_people > 10) {  // (too) simple balking rule
@@ -157,7 +159,7 @@ Customers.prototype.leave = function(c, now) {  // finish meal & leave restauran
 function Table(id) {
   this.id = id;
   this.free = true;  // if not, this table is occupied
-  this.who = undefined;  // customers at the table
+  this.who = undefined;  // customers at this table
 }
 
 function Tables(N) {  // N: total number of tables

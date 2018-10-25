@@ -1,4 +1,4 @@
-// simple dining floor management simuation
+// simple restaurant table assignment simuation
 
 function setup() {
   var my_element = select("#mysketch");
@@ -27,7 +27,6 @@ function draw() {
   my_model.show();
   while(frameCount >= my_model.calendar.events[0].time) {
     my_model.update();
-    console.log(my_model.customers);
   }
 }
 

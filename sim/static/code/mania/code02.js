@@ -144,7 +144,7 @@ Counter.prototype.change_state = function(when, to) {
 }
 
 Counter.prototype.remove_order = function(order) {  // only for kitchen & checkstand
-  var index = this.orders.indexOf(order);  // when cheskout or take_dish is started
+  var index = this.orders.indexOf(order);  // when checkout or take_dish is started
   this.orders.splice(index, 1);
 }
 
@@ -175,7 +175,7 @@ function Task(counter, order, type, when, todos) {
   this.order = order;
   this.type = type;
   this.when = when;  // when this task is requested
-  this.who = undefined;  // for future extention to multi-agent model
+  this.who = undefined;  // for future extension to multi-agent model
   this.list = todos;  // in which list this task is included
 }
 
@@ -257,6 +257,7 @@ Todo.prototype.remove_task = function(task) {
 function Clerk(model, loc) {
   this.model = model;
   this.location = loc;  // node
+  this.state = undefined;  // state: standby, moving, working
   this.primary_task = undefined;  // task
   this.destination = undefined;  // node
   this.put_orders = new Todo();  // orders taken and still held
@@ -265,20 +266,16 @@ function Clerk(model, loc) {
   this.dishes_ready = new Todo();  // cooked dishes at kitchen
   this.checkouts = new Todo();  // checkstand queue
   this.table_tasks = new Todo();  // may be further divided
-  this.stateLog = [{
-    when: 0,
-    where: loc.id
-  }]
+  this.stateLog = []
 }
 
-Clerk.prototype.move = function(when, to) {
-  if(to != this.location) {
-    this.location = to;
-    this.stateLog.push({
-      when: when,
-      where: to.id
-    });
-  }
+Clerk.prototype.change_state = function(when, to) {
+  this.state = to;
+  this.stateLog.push({
+    when: when,
+    where: this.location,
+    state: to
+  });
 }
 
 Clerk.prototype.choose_next_node = function() {  // one step forward
@@ -358,21 +355,24 @@ function Model() {
 
 Model.prototype.update = function() {
   var e = this.calendar.fire();  // e: the next event
+  if(e.type != "arrive" && this.clerk.state == "standby") {  // standby clerk is activated when something happens
+    this.calendar.extend({
+      time: e.time,
+      type: "arrive",
+      at: this.clerk.location
+    });
+  }
   if(e.type == "over") {  // simulation is over
     noLoop();
   } else if(e.type == "create_order") {  // a customer has chosen a menu to order
     var o = e.table.create_order(e.time);
     this.clerk.table_tasks.add_task(new Task(e.table, o, "take_order", e.time, this.clerk.table_tasks));
   } else if(e.type == "arrive") {  // the clerk has arrived at a node
-    this.clerk.move(e.time, e.at);
+    this.clerk.location = e.at;
     if(this.clerk.destination == undefined) {
       this.clerk.set_destination();
       if(this.clerk.destination == undefined) {  // no place to go
-        this.calendar.extend({  // wait at the same node for a moment
-          time: e.time +this.par.WT,
-          type: "arrive",
-          at: e.at
-        });
+        this.clerk.change_state(e.time, "standby");  // wait here for a moment
       } else {
         this.calendar.extend({  // arrive at the same node and the same time
           time: e.time,
@@ -387,12 +387,14 @@ Model.prototype.update = function() {
         var do_it = this.clerk.choose_task();
       }
       if(do_it == undefined) {
-        this.calendar.extend({  // move to the next node
+        this.clerk.change_state(e.time, "moving");  // move to the next node
+        this.calendar.extend({
           time: e.time +this.par.WT,
           type: "arrive",
           at: this.clerk.choose_next_node()
         });
       } else {
+        this.clerk.change_state(e.time, "working");  // carry out a task
         do_it.start(e.time, this.clerk);
         this.calendar.extend({
           time: e.time +this.par.AT,
@@ -472,7 +474,7 @@ Counter.prototype.show = function() {
     fill(0, 0, 255);
   } else if(this.state == "eating") {
     fill(0, 255, 0);
-  } else if(this.statee == "left") {
+  } else if(this.state == "left") {
     fill(0);
   } else if(this.state == "waiting") {
     colorMode(HSB);
@@ -497,18 +499,25 @@ Model.prototype.show_chart = function() {
     text(i *100, i *200, 20);
   }
   text("time", 700, 20);
-  text("kit.", -20, 0 -340);  // kicthen
+  text("kit.", -20, 0 -350);  // kitcthen
   for(var i = 1; i <= 5; i ++) {  // tables
-    text("tab"+i, -25, i *50 -340);
+    text("tab"+i, -25, i *40 -350);
   }
-  text("che.", -20, 6 *50 -340);  // checkstand
+  text("che.", -20, 6 *40 -350);  // checkstand
+  text("work", -25, 7 *40 -350);  // clerk is working
+  text("move", -25, 8 *40 -350);  // clerk is moving
   for(var i = 0; i < this.path.nodes.length; i ++) {
     push();
-    translate(0, i *50 -340);
+    translate(0, i *40 -350);
     this.path.nodes[i].counter.show_in_chart();
     pop();
   }
-//  this.clerk.show_in_chart();
+  push();
+  translate(0, -70);
+  this.clerk.show_in_chart("working");
+  translate(0, 40);
+  this.clerk.show_in_chart("moving");
+  pop();
   stroke(255, 0, 0);
   line(frameCount/20 *2, 0, frameCount/20 *2, -380);
   stroke(0);
@@ -536,22 +545,26 @@ Counter.prototype.show_in_chart = function() {
     } else if(this.stateLog[i].state == "left") {
       fill(0);
     }
+    strokeWeight(0);
     rect(x, -10, w, 20);
     pop();
   }
 }
 
-Clerk.prototype.show_in_chart = function() {
-  push();
-  stroke(0, 0, 255);
-  for(var i = 0; i < this.stateLog.length -1; i ++) {
-    var x_hop = this.stateLog[i].when *2;
-    var x_step = (this.stateLog[i +1].when -my_model.par.WT) *2;
-    var x_jump = this.stateLog[i +1].when *2;
-    var y_from = this.stateLog[i].where *50 -340;
-    var y_to = this.stateLog[i +1].where *50 -340;
-    line(x_hop, y_from, x_step, y_from);
-    line(x_step, y_from, x_jump, y_to);
+Clerk.prototype.show_in_chart = function(state) {
+  for(var i = 0; i < this.stateLog.length; i ++) {
+    push();
+    var x = this.stateLog[i].when *2;
+    if(i == this.stateLog.length -1) {
+      var w = (frameCount/20 -this.stateLog[i].when) *2;
+    } else {
+      var w = (this.stateLog[i +1].when -this.stateLog[i].when) *2;
+    }
+    if(this.stateLog[i].state == state) {
+      strokeWeight(0);
+      fill(0, 0 ,255);
+      rect(x, -10, w, 20);
+    }
+    pop();
   }
-  pop();
 }

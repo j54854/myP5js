@@ -266,7 +266,7 @@ function Clerk(model, loc) {
   this.dishes_ready = new Todo();  // cooked dishes at kitchen
   this.checkouts = new Todo();  // checkstand queue
   this.table_tasks = new Todo();  // may be further divided
-  this.stateLog = []
+  this.stateLog = [];
 }
 
 Clerk.prototype.change_state = function(when, to) {

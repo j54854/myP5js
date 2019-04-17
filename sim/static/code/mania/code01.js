@@ -213,7 +213,7 @@ Model.prototype.update = function() {
     this.customers.arrive(e.time);
     this.calendar.extend({
       time: e.time +exp_rand(1 /this.par.MTB),
-      type: "arrival"  // arraival of next customer
+      type: "arrival"  // arrival of next customer
     });
     this.seat_customers(e.time);
   } else if(e.type == "departure") {

@@ -14,7 +14,7 @@ def post_logs(request):
     if request.method == 'POST' and request.body:
         json_dict = json.loads(request.body)
         score = int(json_dict['score'])
-        game = models.Game.objects.create(score=score);
+        game = models.Game.objects.create(score=score)
         for log in json_dict['logs'].values():
             models.State.objects.create(
                 game=game,
@@ -25,7 +25,7 @@ def post_logs(request):
                 holding_cost=float(log['hc']),
                 ordering_cost=int(log['oc']),
                 revenue=int(log['rv']),
-            );
+            )
         return JsonResponse(json_dict)
     else:
         return HttpResponseServerError()
